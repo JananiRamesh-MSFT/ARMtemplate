@@ -1,0 +1,201 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "environment": {
+            "defaultValue": "infra",
+            "type": "String"
+        },
+        "domain": {
+            "defaultValue": "gemensamt",
+            "allowedValues": [
+                "gemensamt",
+                "mätning",
+                "produktion",
+                "labs"
+            ],
+            "type": "String",
+            "metadata": {
+                "description": "Anger vilken domän som resursen tillhör"
+            }
+        },
+        "subdomain": {
+            "defaultValue": "shared",
+            "type": "String",
+            "metadata": {
+                "description": "Anger subdomän för resursen"
+            }
+        },
+        "version": {
+            "defaultValue": "1.0.0",
+            "type": "String"
+        },
+        "companyshortname": {
+            "defaultValue": "bio",
+            "type": "String",
+            "metadata": {
+                "description": "SDC, Bio osv"
+            }
+        },
+        "application": {
+            "defaultValue": "shared",
+            "type": "String"
+        },
+        "department": {
+            "defaultValue": "Infrastruktur",
+            "type": "String",
+            "metadata": {
+                "description": "Domen, ex Meta, Redovisa m.m."
+            }
+        },
+        "skuName": {
+            "defaultValue": "Developer",
+            "allowedValues": [
+                "Developer",
+                "Standard",
+                "Premium"
+            ],
+            "type": "String",
+            "metadata": {
+                "description": "Allowed sku's have support for Azure AD integration"
+            }
+        },
+        "skuCapacity": {
+            "defaultValue": 1,
+            "type": "Int",
+            "metadata": {
+                "description": "Deve: 1, Basi: 1-2, Stnd: 1-4, Prem: 1-10"
+            }
+        },
+        "publisherEmail": {
+            "defaultValue": "apimanagement@biometria.se",
+            "type": "String"
+        },
+        "publisherName": {
+            "defaultValue": "Biometria",
+            "type": "String"
+        },
+        "hostName": {
+            "defaultValue": "jar1",
+            "type": "String"
+        },
+        "devPortalHostName": {
+            "defaultValue": "jar1",
+            "type": "String"
+        },
+        "companyDomainName": {
+            "defaultValue": "biometria.se",
+            "type": "String"
+        },
+        "wildCardCertSecretId": {
+            "defaultValue": "https://testmanagedidentities.vault.azure.net/secrets/testMI/7d1970c2e91f4c729ab818242ba89870",
+            "type": "String",
+            "metadata": {
+                "description": "The keyvault id of the certificate secret"
+            }
+        }
+    },
+    "variables": {
+        "name": "testmanagedidentitiesAPIMkeyvoultjannn",
+        "keyvaultName": "testmanagedidentities",
+        "environmentDomain": "[if(equals(toLower(parameters('environment')), 'infra'), 'infralab', toLower(parameters('environment')))]",
+        "customDomain": "jar1",
+        "proxyCustomName": "jar1",
+        "devPortalCustomName": "jar1",
+        "apimServiceIdentityResourceId": "[concat(resourceId('Microsoft.ApiManagement/service', variables('name')),'/providers/Microsoft.ManagedIdentity/Identities/default')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.ApiManagement/service",
+            "apiVersion": "2019-12-01-preview",
+            "name": "[variables('name')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [],
+            "tags": {
+                "Environment": "[parameters('environment')]",
+                "Domain": "[parameters('domain')]",
+                "Subdomain": "[parameters('subdomain')]",
+                "Version": "[parameters('version')]"
+            },
+            "sku": {
+                "name": "[parameters('skuName')]",
+                "capacity": "[parameters('skuCapacity')]"
+            },
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "publisherEmail": "[parameters('publisherEmail')]",
+                "publisherName": "[parameters('publisherName')]",
+                "notificationSenderEmail": "apimgmt-noreply@mail.windowsazure.com",
+                "virtualNetworkType": "None"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/accessPolicies",
+            "apiVersion": "2019-09-01",
+            "name": "[concat(variables('keyvaultName'), '/add')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', variables('name'))]"
+            ],
+            "properties": {
+                "accessPolicies": [
+                    {
+                        "tenantId": "[reference(variables('apimServiceIdentityResourceId'), '2015-08-31-PREVIEW').tenantId]",
+                        "objectId": "[reference(variables('apimServiceIdentityResourceId'), '2015-08-31-PREVIEW').principalId]",
+                        "permissions": {
+                            "keys": [],
+                            "secrets": [
+                                "get",
+                                "list"
+                            ],
+                            "certificates": [
+                                "get",
+                                "list"
+                            ],
+                            "storage": []
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2017-05-10",
+            "name": "apimWithKeyVault",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', variables('name'))]"
+            ],
+            "properties": {
+                "mode": "Incremental",
+                "templateLink": {
+                    "uri": "https://raw.githubusercontent.com/hibohra98/apimtemplate/main/apimkeyvault.json",
+                    "contentVersion": "1.0.0.0"
+                },
+                "parameters": {
+                    "publisherEmail": {
+                        "value": "[parameters('publisherEmail')]"
+                    },
+                    "publisherName": {
+                        "value": "[parameters('publisherName')]"
+                    },
+                    "sku": {
+                        "value": "[parameters('skuName')]"
+                    },
+                    "skuCount": {
+                        "value": "[parameters('skuCapacity')]"
+                    },
+                    "proxyCustomHostname1": {
+                        "value": "[variables('proxyCustomName')]"
+                    },
+                    "keyVaultIdToCertificate": {
+                        "value": "[parameters('wildCardCertSecretId')]"
+                    },
+                    "apiManagementServiceName": {
+                        "value": "[variables('name')]"
+                    }
+                }
+            }
+        }
+    ]
+}
